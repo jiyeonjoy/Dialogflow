@@ -2,11 +2,14 @@ package com.wizvera.mytest1004;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.annotation.TargetApi;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.se.omapi.Session;
 import android.speech.RecognizerIntent;
+import android.speech.tts.TextToSpeech;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
@@ -32,6 +35,7 @@ import com.google.cloud.dialogflow.v2beta1.TextInput;
 
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -54,16 +58,19 @@ public class MainActivity extends AppCompatActivity {
     private EditText queryEditText;
     private ImageView sendBtn;
 
-    // Android client
+    /* Android client */
     private AIRequest aiRequest;
     private ai.api.android.AIDataService aiDataService;
     private AIServiceContext customAIServiceContext;
 
-    // Java V2
+    /* Java V2 */
     private com.google.cloud.dialogflow.v2beta1.SessionsClient sessionsClient;
     private com.google.cloud.dialogflow.v2beta1.SessionName session;
 
     private final int REQ_CODE_SPEECH_INPUT = 100;
+
+    /* TextToSpeech */
+    TextToSpeech tts;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -93,11 +100,21 @@ public class MainActivity extends AppCompatActivity {
             return false;
         });
 
-        // Android client
+        /* Android client */
         //initChatbot();
 
-        // Java V2
+        /* Java V2 */
         initV2Chatbot();
+
+        /* TextToSpeech */
+        tts=new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if(status != TextToSpeech.ERROR) {
+                    tts.setLanguage(Locale.KOREAN);
+                }
+            }
+        });
     }
 
     private void initChatbot() {
@@ -145,7 +162,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-
     /**
      * Receiving speech input
      * */
@@ -169,15 +185,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-
-
-
-
-
-
     private void sendMessage(View view) {
-
-
         String msg = queryEditText.getText().toString();
         if (msg.trim().isEmpty()) {
             Toast.makeText(MainActivity.this, "Please enter your query!", Toast.LENGTH_LONG).show();
@@ -193,10 +201,6 @@ public class MainActivity extends AppCompatActivity {
             QueryInput queryInput = QueryInput.newBuilder().setText(TextInput.newBuilder().setText(msg).setLanguageCode("ko")).build();
             new RequestJavaV2Task(MainActivity.this, session, sessionsClient, queryInput).execute();
         }
-
-
-
-
     }
 
     public void callback(AIResponse aiResponse) {
@@ -205,6 +209,13 @@ public class MainActivity extends AppCompatActivity {
             String botReply = aiResponse.getResult().getFulfillment().getSpeech();
             Log.d(TAG, "Bot Reply: " + botReply);
             showTextView(botReply, BOT);
+            /* TextToSpeech */
+            //http://stackoverflow.com/a/29777304
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                ttsGreater21(botReply);
+            } else {
+                ttsUnder20(botReply);
+            }
         } else {
             Log.d(TAG, "Bot Reply: Null");
             showTextView("There was some communication issue. Please Try again!", BOT);
@@ -217,6 +228,13 @@ public class MainActivity extends AppCompatActivity {
             String botReply = response.getQueryResult().getFulfillmentText();
             Log.d(TAG, "V2 Bot Reply: " + botReply);
             showTextView(botReply, BOT);
+            /* TextToSpeech */
+            //http://stackoverflow.com/a/29777304
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                ttsGreater21(botReply);
+            } else {
+                ttsUnder20(botReply);
+            }
         } else {
             Log.d(TAG, "Bot Reply: Null");
             showTextView("There was some communication issue. Please Try again!", BOT);
@@ -252,5 +270,28 @@ public class MainActivity extends AppCompatActivity {
     FrameLayout getBotLayout() {
         LayoutInflater inflater = LayoutInflater.from(MainActivity.this);
         return (FrameLayout) inflater.inflate(R.layout.bot_msg_layout, null);
+    }
+
+
+
+    /* TextToSpeech */
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if(tts !=null){
+            tts.stop();
+            tts.shutdown();
+        }
+    }
+    @SuppressWarnings("deprecation")
+    private void ttsUnder20(String text) {
+        HashMap<String, String> map = new HashMap<>();
+        map.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "MessageId");
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, map);
+    }
+    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+    private void ttsGreater21(String text) {
+        String utteranceId=this.hashCode() + "";
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId);
     }
 }
